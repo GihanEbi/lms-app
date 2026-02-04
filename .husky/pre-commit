@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# We use 'vitest run' so it runs once and exits (instead of watch mode)
+npx vitest run
