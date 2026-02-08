@@ -12,5 +12,6 @@ export default defineConfig({
     include: ["src/**/*.test.ts"], // We will name our test files like 'login.test.ts'
     setupFiles: ["./src/setup-tests.ts"],
     hookTimeout: 20000,
+    fileParallelism: false,
   },
 });

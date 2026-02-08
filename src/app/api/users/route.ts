@@ -1,92 +1,143 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { withAudit } from "@/src/lib/audit";
+import { ilike, or, sql, desc, eq } from "drizzle-orm";
+import { createResponse } from "@/src/lib/api-response";
 import bcrypt from "bcryptjs";
-import { headers } from "next/headers"; // <--- New import
-import jwt from "jsonwebtoken"; // <--- New import
 
-export async function GET() {
+// 🛠️ HELPER: Get User ID from Header
+const getUserId = (req: Request): number => {
+  const testId = req.headers.get("x-user-id");
+  return testId ? parseInt(testId) : 1;
+};
+
+// 1. GET (Read all users)
+export async function GET(request: NextRequest) {
   try {
-    // 1. Get the headers
-    const headersList = await headers();
-    const authHeader = headersList.get("authorization");
+    const searchParams = request.nextUrl.searchParams;
+    const pageNo = parseInt(searchParams.get("pageNo") || "0");
+    const pageSize = parseInt(searchParams.get("pageSize") || "0");
+    const searchValue = searchParams.get("searchValue") || "";
 
-    // 2. Check if the header exists
-    if (!authHeader) {
-      return NextResponse.json(
-        { error: "Unauthorized: No token provided" },
-        { status: 401 },
+    const searchFilter = searchValue
+      ? or(
+          ilike(users.full_name, `%${searchValue}%`),
+          ilike(users.email, `%${searchValue}%`),
+        )
+      : undefined;
+
+    // Defined columns to return (Safe list)
+    const safeColumns = {
+      id: users.id,
+      code: users.code,
+      full_name: users.full_name,
+      email: users.email,
+      is_active: users.is_active,
+      group_id: users.group_id,
+      user_created: users.user_created, // ✅ Added for consistency
+      created_at: users.created_at,
+    };
+
+    if (pageNo > 0 && pageSize > 0) {
+      const offset = (pageNo - 1) * pageSize;
+
+      const data = await db
+        .select(safeColumns)
+        .from(users)
+        .where(searchFilter)
+        .limit(pageSize)
+        .offset(offset)
+        .orderBy(desc(users.created_at));
+
+      const [totalCountRes] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(users)
+        .where(searchFilter);
+
+      const total = Number(totalCountRes.count);
+
+      return createResponse(
+        true,
+        "Users fetched successfully",
+        {
+          data,
+          meta: {
+            pageNo,
+            pageSize,
+            total,
+            totalPages: Math.ceil(total / pageSize),
+          },
+        },
+        200,
       );
+    } else {
+      const data = await db
+        .select(safeColumns)
+        .from(users)
+        .where(searchFilter)
+        .orderBy(desc(users.created_at));
+
+      return createResponse(true, "Users fetched successfully", data, 200);
     }
-
-    // 3. Extract the token (Format is usually "Bearer <token>")
-    const token = authHeader.split(" ")[1];
-
-    // 4. Verify the token
-    try {
-      jwt.verify(token, process.env.JWT_SECRET!);
-    } catch (err) {
-      return NextResponse.json(
-        { error: "Unauthorized: Invalid token" },
-        { status: 401 },
-      );
-    }
-
-    // 5. If we get here, the user is valid! Fetch the data.
-    const allUsers = await db.select().from(users);
-
-    // Crucial: Don't send back passwords!
-    // We map over the users to remove the password field before sending
-    const safeUsers = allUsers.map(({ password, ...rest }) => rest);
-
-    return NextResponse.json(safeUsers);
   } catch (error) {
-    return NextResponse.json(
-      { error: "Failed to fetch users" },
-      { status: 500 },
-    );
+    console.error("Error fetching users:", error);
+    return createResponse(false, "Error fetching users", null, 500);
   }
 }
 
-export async function POST(request: Request) {
+// 2. CREATE USER
+export async function POST(req: Request) {
   try {
-    // 1. Get data from the user
-    const { name, email, password } = await request.json();
+    const body = await req.json();
+    const { full_name, email, password, group_id, is_active } = body;
+    const userId = getUserId(req);
 
-    // 2. Check if user already exists
-    // We search the database for a user with this email
+    if (!full_name || !email || !password || !group_id) {
+      return createResponse(false, "Missing required fields", null, 400);
+    }
+
     const existingUser = await db
       .select()
       .from(users)
-      .where(eq(users.email, email));
+      .where(eq(users.email, email))
+      .limit(1);
 
     if (existingUser.length > 0) {
-      return NextResponse.json(
-        { error: "Email already in use" },
-        { status: 400 },
-      );
+      return createResponse(false, "Email already exists", null, 409);
     }
 
-    // 3. Hash the password
-    // 10 is the "salt rounds" - higher is safer but slower
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 4. Save to database
-    // Notice we save 'hashedPassword', NOT the plain 'password' variable!
-    const newUser = await db
-      .insert(users)
-      .values({
-        name,
-        email,
-        password: hashedPassword,
-        role: "student", // Default role
-      })
-      .returning({ id: users.id, email: users.email, name: users.name });
+    const [newUser] = await withAudit(
+      userId,
+      "CREATE",
+      users,
+      null,
+      async () => {
+        return await db
+          .insert(users)
+          .values({
+            full_name,
+            email,
+            password_hash: hashedPassword,
+            group_id: parseInt(group_id),
+            is_active: is_active ?? true,
+            user_created: userId,
+          })
+          .returning({
+            id: users.id,
+            full_name: users.full_name,
+            email: users.email,
+            user_created: users.user_created, // ✅ FIX: This was missing!
+            // Do not return password_hash
+          });
+      },
+    );
 
-    return NextResponse.json(newUser[0], { status: 201 });
+    return NextResponse.json(newUser, { status: 201 });
   } catch (error) {
-    console.error(error);
-    return NextResponse.json({ error: "Registration failed" }, { status: 500 });
+    console.error("Create User Error:", error);
+    return createResponse(false, "Failed to create user", null, 500);
   }
 }
