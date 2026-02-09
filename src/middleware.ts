@@ -2,26 +2,18 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
-// 1. Define routes that don't need authentication
-const publicRoutes = [
-  "/api/auth/login",
-  "/api/register",
-  "/api/rules",
-  "/api/rules/[ruleId]",
-];
+const publicRoutes = ["/api/auth/login", "/api/register"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 2. Check if the current path is public
-  // If it is, we return "next()" to let the request pass through immediately
+  // 1. Bypass public routes
   if (publicRoutes.includes(pathname)) {
     return NextResponse.next();
   }
 
-  // 3. If it's NOT public, check for the token
+  // 2. Check for Token
   const authHeader = request.headers.get("Authorization");
-
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return NextResponse.json(
       { error: "Unauthorized: Missing token" },
@@ -29,19 +21,26 @@ export async function middleware(request: NextRequest) {
     );
   }
 
-  // Extract the actual token string
   const token = authHeader.split(" ")[1];
 
   try {
-    // 4. Verify the token
-    // We need to encode the secret for the 'jose' library
     const secret = new TextEncoder().encode(process.env.JWT_SECRET);
 
-    // If this fails, it throws an error and goes to the catch block
-    await jwtVerify(token, secret);
+    // 3. Verify Token
+    const { payload } = await jwtVerify(token, secret);
 
-    // 5. Token is valid! Let the request proceed
-    return NextResponse.next();
+    // 4. 🚀 CRITICAL STEP: Inject User Info into Headers
+    // This allows the API Route to know WHO the user is without parsing the token again.
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-user-id", String(payload.userId));
+    requestHeaders.set("x-group-id", String(payload.group_id)); // Ensure your Login API puts this in the token!
+
+    // Pass the modified headers to the actual route
+    return NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
   } catch (error) {
     return NextResponse.json(
       { error: "Unauthorized: Invalid token" },
@@ -50,8 +49,6 @@ export async function middleware(request: NextRequest) {
   }
 }
 
-// Configure where this middleware runs
-// We only want it to run on routes starting with /api
 export const config = {
   matcher: "/api/:path*",
 };

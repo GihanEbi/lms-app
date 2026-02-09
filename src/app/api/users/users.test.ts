@@ -1,20 +1,20 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { GET as GET_USERS, POST as CREATE_USER } from "./route";
 import { PUT, DELETE } from "./[userId]/route";
 import { NextRequest } from "next/server";
 import { db } from "@/db";
-import { users, userGroups } from "@/db/schema";
+import { users, userGroups, rules, groupRules } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { AccessConstants } from "@/src/constants/AccessConstants";
 
 const BASE_URL = "http://localhost:3000/api/users";
 
 describe("Users API Integration Tests", () => {
   let bootstrapGroupId: number;
-  let testCreatorId: number; // The ID of the admin running the tests
+  let testCreatorId: number;
 
-  // --- SETUP: Create Group & Creator User ---
   beforeEach(async () => {
-    // 1. Create a Group (Users cannot exist without a group)
+    // 1. Group
     const [group] = await db
       .insert(userGroups)
       .values({
@@ -24,7 +24,7 @@ describe("Users API Integration Tests", () => {
       .returning();
     bootstrapGroupId = group.id;
 
-    // 2. Create an "Admin" User to be the 'user_created' reference
+    // 2. User
     const [admin] = await db
       .insert(users)
       .values({
@@ -36,6 +36,31 @@ describe("Users API Integration Tests", () => {
       })
       .returning();
     testCreatorId = admin.id;
+
+    // 3. Permissions
+    const permissionsNeeded = [
+      { name: "Get Users", code: AccessConstants.USER_GET },
+      { name: "Create/Edit Users", code: AccessConstants.USER_CREATE_EDIT },
+      { name: "Delete Users", code: AccessConstants.USER_DELETE },
+    ];
+
+    const insertedPerms = await db
+      .insert(rules)
+      .values(
+        permissionsNeeded.map((p) => ({
+          name: p.name,
+          code: p.code,
+          user_created: testCreatorId,
+        })),
+      )
+      .returning();
+
+    await db.insert(groupRules).values(
+      insertedPerms.map((perm) => ({
+        group_id: bootstrapGroupId,
+        rule_id: perm.id,
+      })),
+    );
   });
 
   // --- HELPER: Create a fresh user for testing ---
@@ -43,17 +68,26 @@ describe("Users API Integration Tests", () => {
     const uniqueEmail = `testuser_${Date.now()}@example.com`;
     const req = new NextRequest(BASE_URL, {
       method: "POST",
-      headers: { "x-user-id": testCreatorId.toString() },
+      headers: {
+        "x-user-id": testCreatorId.toString(),
+        "x-group-id": bootstrapGroupId.toString(),
+      },
       body: JSON.stringify({
         full_name: "Integration Test User",
         email: uniqueEmail,
-        password: "securePassword123", // API should hash this
+        password: "securePassword123",
         group_id: bootstrapGroupId,
-        is_active: true,
+        phone_no: "1234567890", // Valid phone
       }),
     });
+
+    req.headers.set("x-group-id", bootstrapGroupId.toString());
+
     const res = await CREATE_USER(req);
-    return await res.json();
+    const json = await res.json();
+
+    if (!res.ok) throw new Error(json.message || "Failed to create test user");
+    return json.data;
   }
 
   // --- TEST 1: CREATE USER ---
@@ -62,8 +96,8 @@ describe("Users API Integration Tests", () => {
 
     expect(newUser.id).toBeDefined();
     expect(newUser.full_name).toBe("Integration Test User");
-    expect(newUser.password_hash).toBeUndefined(); // Security check: never return hash
-    expect(newUser.user_created).toBe(testCreatorId); // Audit check
+    expect(newUser.password_hash).toBeUndefined();
+    expect(newUser.user_created).toBe(testCreatorId);
   });
 
   // --- TEST 2: LIST USERS ---
@@ -72,12 +106,13 @@ describe("Users API Integration Tests", () => {
 
     const url = `${BASE_URL}?pageNo=1&pageSize=10`;
     const req = new NextRequest(url, { method: "GET" });
+    req.headers.set("x-user-id", testCreatorId.toString());
+    req.headers.set("x-group-id", bootstrapGroupId.toString());
 
     const response = await GET_USERS(req);
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    // Find our specific user
     const found = body.data.data.find((u: any) => u.id === user.id);
     expect(found).toBeDefined();
     expect(found.email).toBe(user.email);
@@ -85,10 +120,12 @@ describe("Users API Integration Tests", () => {
 
   // --- TEST 3: SEARCH USER ---
   it("should search for a user by name", async () => {
-    await createTestUser(); // name is "Integration Test User"
+    await createTestUser();
 
     const url = `${BASE_URL}?pageNo=1&pageSize=10&searchValue=Integration`;
     const req = new NextRequest(url, { method: "GET" });
+    req.headers.set("x-user-id", testCreatorId.toString());
+    req.headers.set("x-group-id", bootstrapGroupId.toString());
 
     const response = await GET_USERS(req);
     const body = await response.json();
@@ -103,12 +140,16 @@ describe("Users API Integration Tests", () => {
 
     const req = new NextRequest(`${BASE_URL}/${user.id}`, {
       method: "PUT",
-      headers: { "x-user-id": testCreatorId.toString() },
+      headers: {
+        "x-user-id": testCreatorId.toString(),
+        "x-group-id": bootstrapGroupId.toString(),
+      },
       body: JSON.stringify({
         full_name: "Updated Name",
-        email: user.email, // Keep email same
+        email: user.email,
         group_id: bootstrapGroupId,
         is_active: false,
+        phone_no: "0987654321",
       }),
     });
 
@@ -127,7 +168,10 @@ describe("Users API Integration Tests", () => {
 
     const req = new NextRequest(`${BASE_URL}/${user.id}`, {
       method: "DELETE",
-      headers: { "x-user-id": testCreatorId.toString() },
+      headers: {
+        "x-user-id": testCreatorId.toString(),
+        "x-group-id": bootstrapGroupId.toString(),
+      },
     });
 
     const params = Promise.resolve({ userId: user.id.toString() });
@@ -136,11 +180,11 @@ describe("Users API Integration Tests", () => {
 
     expect(body.success).toBe(true);
 
-    // Verify deletion
     const check = await db.select().from(users).where(eq(users.id, user.id));
     expect(check.length).toBe(0);
   });
 
+  // --- TEST 6: FAIL DUPLICATE EMAIL ---
   // --- TEST 6: FAIL DUPLICATE EMAIL ---
   it("should fail when creating a user with duplicate email", async () => {
     // 1. Create first user
@@ -149,16 +193,29 @@ describe("Users API Integration Tests", () => {
     // 2. Try creating another with SAME email
     const req = new NextRequest(BASE_URL, {
       method: "POST",
-      headers: { "x-user-id": testCreatorId.toString() },
+      headers: {
+        "x-user-id": testCreatorId.toString(),
+        "x-group-id": bootstrapGroupId.toString(),
+      },
       body: JSON.stringify({
         full_name: "Copycat User",
         email: firstUser.email, // Duplicate!
-        password: "password",
+        password: "SecurePassword123!", // ✅ FIX: Use a strong password to pass validation
         group_id: bootstrapGroupId,
+        phone_no: "1122334455", // Unique phone to ensure only Email fails
       }),
     });
 
+    req.headers.set("x-group-id", bootstrapGroupId.toString());
+
     const response = await CREATE_USER(req);
+
+    // Optional: Log the error if it fails again to see exactly what went wrong
+    if (response.status !== 409) {
+      const json = await response.json();
+      console.log("Unexpected Error Response:", json);
+    }
+
     expect(response.status).toBe(409); // Conflict
   });
 });

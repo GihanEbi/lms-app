@@ -19,6 +19,8 @@ export const users = pgTable("users", {
     .notNull(),
   full_name: varchar("full_name", { length: 255 }).notNull().unique(),
   email: varchar("email", { length: 255 }).notNull().unique(),
+  phone_no: varchar("phone_no", { length: 20 }),
+  profile_image_url: varchar("profile_image_url", { length: 255 }),
   password_hash: varchar("password_hash", { length: 255 }).notNull(),
   is_active: boolean("is_active").default(true).notNull(),
   group_id: integer("group_id")

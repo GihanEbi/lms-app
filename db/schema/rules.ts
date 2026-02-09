@@ -12,9 +12,7 @@ import { users } from "@/db/schema";
 export const rules = pgTable("rules", {
   // Standard Auto-incrementing ID
   id: serial("id").primaryKey(),
-  code: varchar("code")
-    .generatedAlwaysAs(sql`'RU' || LPAD("id"::text, 5, '0')`)
-    .notNull(),
+  code: varchar("code", { length: 255 }).notNull(),
 
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),

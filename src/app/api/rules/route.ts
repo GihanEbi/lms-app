@@ -1,9 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { db } from "@/db";
 import { rules } from "@/db/schema";
 import { withAudit } from "@/src/lib/audit";
-import { ilike, or, sql, desc } from "drizzle-orm";
+import { ilike, or, sql, desc, eq } from "drizzle-orm";
 import { createResponse } from "@/src/lib/api-response";
+import { requireAccess } from "@/src/lib/auth-guard";
+import { AccessConstants } from "@/src/constants/AccessConstants";
+import { rulesSchema } from "@/src/services/validation/schemas/rulesSchema";
 
 // 🛠️ HELPER: Get User ID from Header (for Tests) or Default to 1
 const getUserId = (req: Request): number => {
@@ -12,9 +15,13 @@ const getUserId = (req: Request): number => {
 };
 
 // 1. READ (Get all rules)
-export async function GET(request: NextRequest) {
+export async function GET(req: NextRequest) {
+  //  ========================= ACCESS CONTROL CHECK =========================
+  const accessError = await requireAccess(req, AccessConstants.RULE_GET); // <-- Use the actual code for "Get Rule"
+  if (accessError) return accessError; // <--- Stops execution if denied
+
   try {
-    const searchParams = request.nextUrl.searchParams;
+    const searchParams = req.nextUrl.searchParams;
     const pageNo = parseInt(searchParams.get("pageNo") || "0");
     const pageSize = parseInt(searchParams.get("pageSize") || "0");
     const searchValue = searchParams.get("searchValue") || "";
@@ -63,9 +70,8 @@ export async function GET(request: NextRequest) {
       // --- Scenario B: No Pagination ---
       const data = await db
         .select({
-          id: rules.id,
-          code: rules.code,
-          name: rules.name,
+          value: rules.code,
+          label: rules.name,
         })
         .from(rules)
         .where(searchFilter)
@@ -81,11 +87,40 @@ export async function GET(request: NextRequest) {
 
 // 2. CREATE - Audit Required 📝
 export async function POST(req: Request) {
+  //  ========================= ACCESS CONTROL CHECK =========================
+  const accessError = await requireAccess(
+    req,
+    AccessConstants.RULE_CREATE_EDIT,
+  ); // <-- Use the actual code for "Create Rule"
+  if (accessError) return accessError; // <--- Stops execution if denied
+
   try {
     const body = await req.json();
-    const { name, description } = body;
+    const { name, description, code } = body;
 
-    // ✅ FIX: Use Dynamic User ID
+    // ====================== VALIDATION ======================
+    const { error } = rulesSchema.validate(body);
+    if (error) {
+      return createResponse(false, error.details[0].message, null, 400);
+    }
+    // ====================== CHECK DUPLICATES (Name OR Code) ======================
+    const existingRule = await db
+      .select()
+      .from(rules)
+      .where(or(eq(rules.name, name), eq(rules.code, code)))
+      .limit(1);
+
+    if (existingRule.length > 0) {
+      // Optional: Be specific about what failed
+      const msg =
+        existingRule[0].code === code
+          ? "A rule with this Code already exists."
+          : "A rule with this Name already exists.";
+
+      return createResponse(false, msg, null, 409); // 409 Conflict
+    }
+
+    // ====================== CREATE WITH AUDIT =======================
     const userId = getUserId(req);
 
     const [newRule] = await withAudit(
@@ -99,13 +134,14 @@ export async function POST(req: Request) {
           .values({
             name,
             description,
+            code,
             user_created: userId, // ✅ Linked to the test user
           })
           .returning();
       },
     );
 
-    return NextResponse.json(newRule, { status: 201 });
+    return createResponse(true, "Rule created successfully", newRule, 201);
   } catch (error) {
     console.error("Create Rule Error:", error);
     return createResponse(false, "Failed to create rule", null, 500);
