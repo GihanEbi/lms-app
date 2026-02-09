@@ -6,3 +6,4 @@ export * from './group_rules';
 export * from './degree_certificates';
 export * from './subject_categories';
 export * from './subjects';
+export * from './instructor/instructor_personal_information';
