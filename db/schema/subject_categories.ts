@@ -4,20 +4,20 @@ import {
   varchar,
   text,
   timestamp,
+  boolean,
   integer,
 } from "drizzle-orm/pg-core";
 import { users } from "@/db/schema";
 
-export const rules = pgTable("rules", {
-  // Standard Auto-incrementing ID
+export const subjectCategories = pgTable("subject_categories", {
   id: serial("id").primaryKey(),
-  code: varchar("code", { length: 255 }).notNull(),
-
-  name: varchar("name", { length: 255 }).notNull(),
+  subject_category_name: varchar("subject_category_name", {
+    length: 255,
+  }).notNull(),
   description: text("description"),
+  is_active: boolean("is_active").default(true).notNull(),
 
-  // Foreign Keys pointing to the Users table
-  // "onDelete: set null" means if the user is deleted, this field becomes null (instead of deleting the rule)
+  // Audit Fields
   user_created: integer("user_created").references(() => users.id, {
     onDelete: "set null",
   }),
@@ -26,7 +26,6 @@ export const rules = pgTable("rules", {
   }),
 
   created_at: timestamp("created_at").defaultNow().notNull(),
-  // Optional: It is good practice to have updated_at when you have user_modified
   updated_at: timestamp("updated_at")
     .defaultNow()
     .$onUpdate(() => new Date()),

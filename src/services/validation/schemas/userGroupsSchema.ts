@@ -6,7 +6,7 @@ export const createUserGroupsSchema = Joi.object({
     "string.min": "Name must be at least 3 characters",
     "string.max": "Name must be at most 50 characters",
   }),
-  description: Joi.string().max(255).optional().messages({
+  description: Joi.string().max(255).optional().empty("").messages({
     "string.max": "Description must be at most 255 characters",
   }),
 });
@@ -18,7 +18,7 @@ export const editUserGroupsSchema = Joi.object({
     "string.min": "Name must be at least 3 characters",
     "string.max": "Name must be at most 50 characters",
   }),
-  description: Joi.string().max(255).optional().messages({
+  description: Joi.string().max(255).optional().empty("").messages({
     "string.max": "Description must be at most 255 characters",
   }),
   is_active: Joi.boolean().required().messages({

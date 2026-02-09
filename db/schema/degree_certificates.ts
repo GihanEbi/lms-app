@@ -4,17 +4,18 @@ import {
   varchar,
   text,
   timestamp,
+  boolean,
   integer,
 } from "drizzle-orm/pg-core";
 import { users } from "@/db/schema";
 
-export const rules = pgTable("rules", {
-  // Standard Auto-incrementing ID
+export const degreeCertificate = pgTable("degree_certificates", {
   id: serial("id").primaryKey(),
-  code: varchar("code", { length: 255 }).notNull(),
-
-  name: varchar("name", { length: 255 }).notNull(),
+  degree_certificate_name: varchar("degree_certificate_name", {
+    length: 255,
+  }).notNull(),
   description: text("description"),
+  is_active: boolean("is_active").default(true).notNull(),
 
   // Foreign Keys pointing to the Users table
   // "onDelete: set null" means if the user is deleted, this field becomes null (instead of deleting the rule)
