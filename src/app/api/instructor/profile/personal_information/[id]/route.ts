@@ -67,7 +67,7 @@ export async function GET(req: Request, { params }: RouteParams) {
 
 // 4. UPDATE
 export async function PUT(req: Request, { params }: RouteParams) {
-  const accessError = await requireAccess(req, AccessConstants.INSTRUCTOR_EDIT);
+  const accessError = await requireAccess(req, AccessConstants.INSTRUCTOR_CREATE_EDIT);
   if (accessError) return accessError;
 
   try {

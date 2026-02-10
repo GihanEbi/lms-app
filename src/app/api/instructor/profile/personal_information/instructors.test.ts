@@ -55,15 +55,15 @@ describe("Instructors API Integration Tests", () => {
     testDegreeId = degree.id;
 
     // 4. Permissions
-    // Note: Your POST uses INSTRUCTOR_CREATE_EDIT, but PUT uses INSTRUCTOR_EDIT.
+    // Note: Your POST uses INSTRUCTOR_CREATE_EDIT, but PUT uses INSTRUCTOR_CREATE_EDIT.
     // We verify both exist to avoid 403 errors.
     const permissionsNeeded = [
       { name: "Get Instructors", code: AccessConstants.INSTRUCTOR_GET },
       {
         name: "Create Instructors",
-        code: AccessConstants.INSTRUCTOR_EDIT,
+        code: AccessConstants.INSTRUCTOR_CREATE_EDIT,
       },
-      { name: "Edit Instructors", code: AccessConstants.INSTRUCTOR_EDIT },
+      { name: "Edit Instructors", code: AccessConstants.INSTRUCTOR_CREATE_EDIT },
       { name: "Delete Instructors", code: AccessConstants.INSTRUCTOR_DELETE },
     ];
 

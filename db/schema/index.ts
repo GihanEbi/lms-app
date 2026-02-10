@@ -7,3 +7,5 @@ export * from './degree_certificates';
 export * from './subject_categories';
 export * from './subjects';
 export * from './instructor/instructor_personal_information';
+export * from './instructor/instructor_preferences';
+export * from './instructor/instructor_verifications';
