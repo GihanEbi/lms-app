@@ -69,7 +69,7 @@ export const editInstructorVerificationSchema = Joi.object({
     .messages({
       "any.only": "Status must be one of 'pending', 'verified', or 'rejected'",
     }),
-  rejection_reason: Joi.string().optional().allow("").messages({
+  rejection_reason: Joi.string().optional().allow("",null).messages({
     "string.base": "Rejection reason must be a string",
   }),
 });

@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { users, degreeCertificate } from "@/db/schema";
 import { sql } from "drizzle-orm";
+import { instructorRegistrationStatusConstants } from "@/src/constants/instructorConstants";
 
 export const instructors = pgTable("instructor_personal_information", {
   id: serial("id").primaryKey(),
@@ -33,6 +34,9 @@ export const instructors = pgTable("instructor_personal_information", {
   resume_url: text("resume_url"),
 
   is_active: boolean("is_active").default(true).notNull(),
+  registration_status: varchar("registration_status", { length: 50 })
+    .default(instructorRegistrationStatusConstants.PENDING)
+    .notNull(),
 
   // Audit Fields
   user_created: integer("user_created").references(() => users.id, {

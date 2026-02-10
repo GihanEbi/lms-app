@@ -3,3 +3,9 @@ export const certificateVerificationConstants = {
   VERIFIED: "verified",
   REJECTED: "rejected",
 };
+
+export const instructorRegistrationStatusConstants = {
+  PENDING: "pending",
+  APPROVED: "approved",
+  REJECTED: "rejected",
+};

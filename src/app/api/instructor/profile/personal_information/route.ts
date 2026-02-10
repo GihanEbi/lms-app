@@ -2,48 +2,58 @@ import { NextRequest } from "next/server";
 import { db } from "@/db";
 import { instructors, degreeCertificate } from "@/db/schema";
 import { withAudit } from "@/src/lib/audit";
-import { ilike, or, sql, desc, eq } from "drizzle-orm";
+import { or, eq } from "drizzle-orm";
 import { createResponse } from "@/src/lib/api-response";
 import { requireAccess } from "@/src/lib/auth-guard";
 import { AccessConstants } from "@/src/constants/AccessConstants"; // Ensure INSTRUCTOR_* constants exist
 import { createInstructorPersonalInformationSchema } from "@/src/services/validation/schemas/instructors/instructorPersonalInformation";
 import bcrypt from "bcryptjs";
 
-const getUserId = (req: Request): number => {
+// 🛠️ HELPER: Get User ID (Returns null if not logged in)
+const getUserId = (req: Request): number | null => {
   const testId = req.headers.get("x-user-id");
-  return testId ? parseInt(testId) : 1;
+  return testId ? parseInt(testId) : null;
 };
 
-// 1. GET (List)
+// 1. GET (Get personal info by Instructor ID via query param)
+// Usage: /api/instructor_preferences?instructor_id=123
 export async function GET(req: NextRequest) {
-  //  ========================= ACCESS CONTROL CHECK =========================
-  const accessError = await requireAccess(req, AccessConstants.INSTRUCTOR_GET);
-  if (accessError) return accessError;
+  const instructorId = req.nextUrl.searchParams.get("instructor_id");
 
+  if (!instructorId) {
+    return createResponse(
+      false,
+      "instructor_id query parameter is required",
+      null,
+      400,
+    );
+  }
+
+  const idAsNumber = parseInt(instructorId);
+  if (isNaN(idAsNumber)) {
+    return createResponse(false, "Invalid instructor_id", null, 400);
+  }
   try {
-    const searchParams = req.nextUrl.searchParams;
-    const pageNo = parseInt(searchParams.get("pageNo") || "0");
-    const pageSize = parseInt(searchParams.get("pageSize") || "0");
-    const searchValue = searchParams.get("searchValue") || "";
-
-    const searchFilter = searchValue
-      ? or(
-          ilike(instructors.full_name, `%${searchValue}%`),
-          ilike(instructors.email, `%${searchValue}%`),
-          ilike(instructors.phone_number, `%${searchValue}%`),
-        )
-      : undefined;
-
-    // Join with Degree Certificate to show certificate name
-    const baseQuery = db
+    const result = await db
       .select({
         id: instructors.id,
+        code: instructors.code,
         full_name: instructors.full_name,
         email: instructors.email,
         phone_number: instructors.phone_number,
         is_active: instructors.is_active,
+
+        // Joined Degree Info
+        highest_degree_certificate_id:
+          instructors.highest_degree_certificate_id,
         highest_degree_name: degreeCertificate.degree_certificate_name,
+
+        // Other Personal Details
         years_of_experience: instructors.years_of_experience,
+        date_of_birth: instructors.date_of_birth,
+        address: instructors.address,
+        profile_picture_url: instructors.profile_picture_url,
+        resume_url: instructors.resume_url,
         created_at: instructors.created_at,
       })
       .from(instructors)
@@ -51,51 +61,22 @@ export async function GET(req: NextRequest) {
         degreeCertificate,
         eq(instructors.highest_degree_certificate_id, degreeCertificate.id),
       )
-      .where(searchFilter);
+      .where(eq(instructors.id, idAsNumber))
+      .limit(1);
 
-    if (pageNo > 0 && pageSize > 0) {
-      const offset = (pageNo - 1) * pageSize;
-
-      const data = await baseQuery
-        .limit(pageSize)
-        .offset(offset)
-        .orderBy(desc(instructors.created_at));
-
-      const [totalCountRes] = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(instructors)
-        .where(searchFilter);
-
-      return createResponse(
-        true,
-        "Instructors fetched successfully",
-        {
-          data,
-          meta: {
-            pageNo,
-            pageSize,
-            total: Number(totalCountRes.count),
-            totalPages: Math.ceil(Number(totalCountRes.count) / pageSize),
-          },
-        },
-        200,
-      );
-    } else {
-      // Dropdown data
-      const data = await db
-        .select({
-          value: instructors.id,
-          label: instructors.full_name,
-        })
-        .from(instructors)
-        .where(searchFilter)
-        .orderBy(desc(instructors.created_at));
-
-      return createResponse(true, "Fetched successfully", data, 200);
+    if (result.length === 0) {
+      return createResponse(false, "Instructor not found", null, 404);
     }
+
+    return createResponse(
+      true,
+      "Instructor personal information fetched successfully",
+      result[0], // Return single object
+      200,
+    );
   } catch (error) {
-    console.error("Error fetching instructors:", error);
-    return createResponse(false, "Error fetching instructors", null, 500);
+    console.error("Error fetching instructor:", error);
+    return createResponse(false, "Error fetching instructor", null, 500);
   }
 }
 
@@ -167,7 +148,7 @@ export async function POST(req: Request) {
     const userId = getUserId(req);
 
     const [newItem] = await withAudit(
-      userId,
+      userId ?? 0,
       "CREATE",
       instructors,
       null,

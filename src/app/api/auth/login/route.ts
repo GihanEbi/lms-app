@@ -3,11 +3,22 @@ import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
-import { createResponse } from "@/src/lib/api-response"; // <--- 1. Import the helper
+import { createResponse } from "@/src/lib/api-response";
 
 export async function POST(request: Request) {
   try {
-    const { email, password } = await request.json();
+    const body = await request.json();
+    const { email, password } = body;
+
+    // ✅ FIX: Validate input before using it
+    if (!email || !password) {
+      return createResponse(
+        false,
+        "Email and password are required",
+        null,
+        400,
+      );
+    }
 
     const userList = await db
       .select()
@@ -16,14 +27,12 @@ export async function POST(request: Request) {
     const user = userList[0];
 
     if (!user) {
-      // Error Case 1: invalid user
       return createResponse(false, "Invalid credentials", null, 401);
     }
 
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
 
     if (!passwordMatch) {
-      // Error Case 2: invalid password
       return createResponse(false, "Invalid credentials", null, 401);
     }
 
@@ -40,11 +49,9 @@ export async function POST(request: Request) {
       { expiresIn },
     );
 
-    // Success Case
     return createResponse(true, "Login successful!", { token });
   } catch (error) {
     console.error(error);
-    // Catch Block: The one you asked about!
     return createResponse(false, "Login failed", null, 500);
   }
 }

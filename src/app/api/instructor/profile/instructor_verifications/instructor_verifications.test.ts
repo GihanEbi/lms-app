@@ -13,6 +13,7 @@ import {
   groupRules,
 } from "@/db/schema";
 import { AccessConstants } from "@/src/constants/AccessConstants";
+import { certificateVerificationConstants } from "@/src/constants/instructorConstants";
 
 const BASE_URL = "http://localhost:3000/api/instructor_verifications";
 
@@ -140,7 +141,7 @@ describe("Instructor Verification API Integration Tests", () => {
         "x-group-id": testGroupId.toString(),
       },
       body: JSON.stringify({
-        status: "verified",
+        status: certificateVerificationConstants.VERIFIED,
         rejection_reason: "All good",
         // Adding another document during update
         identity_document_urls: ["https://s3.aws.com/new_doc.jpg"],
@@ -152,7 +153,7 @@ describe("Instructor Verification API Integration Tests", () => {
     const res = await PUT(req, { params });
     const json = await res.json();
 
-    expect(json.data.status).toBe("verified");
+    expect(json.data.status).toBe(certificateVerificationConstants.VERIFIED);
     expect(json.data.identity_document_urls).toHaveLength(1);
   });
 });

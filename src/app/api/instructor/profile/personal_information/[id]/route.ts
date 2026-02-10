@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { degreeCertificate, instructors } from "@/db/schema";
 import { and, eq, is, ne, or } from "drizzle-orm";
@@ -7,7 +6,6 @@ import { createResponse } from "@/src/lib/api-response";
 import { requireAccess } from "@/src/lib/auth-guard";
 import { AccessConstants } from "@/src/constants/AccessConstants";
 import { editInstructorPersonalInformationSchema } from "@/src/services/validation/schemas/instructors/instructorPersonalInformation";
-import bcrypt from "bcryptjs";
 
 const getUserId = (req: Request): number => {
   const testId = req.headers.get("x-user-id");
@@ -67,7 +65,10 @@ export async function GET(req: Request, { params }: RouteParams) {
 
 // 4. UPDATE
 export async function PUT(req: Request, { params }: RouteParams) {
-  const accessError = await requireAccess(req, AccessConstants.INSTRUCTOR_CREATE_EDIT);
+  const accessError = await requireAccess(
+    req,
+    AccessConstants.INSTRUCTOR_CREATE_EDIT,
+  );
   if (accessError) return accessError;
 
   try {
