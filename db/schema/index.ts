@@ -10,3 +10,6 @@ export * from './instructor/instructor_personal_information';
 export * from './instructor/instructor_preferences';
 export * from './instructor/instructor_verifications';
 export * from './notifications';
+export * from './courses/course_basic_information';
+export * from './courses/course_curriculum';
+export * from './courses/course_pricing';
