@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
-const publicRoutes = ["/api/auth/login", "/api/register", "/api/instructor/profile/personal_information"];
+const publicRoutes = [
+  "/api/auth/login",
+  "/api/register",
+  "/api/instructor/profile/personal_information",
+];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -33,7 +37,8 @@ export async function middleware(request: NextRequest) {
     // This allows the API Route to know WHO the user is without parsing the token again.
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-user-id", String(payload.userId));
-    requestHeaders.set("x-group-id", String(payload.group_id)); // Ensure your Login API puts this in the token!
+    requestHeaders.set("x-group-id", String(payload.group_id));
+    requestHeaders.set("x-user-type", String(payload.user_type));
 
     // Pass the modified headers to the actual route
     return NextResponse.next({

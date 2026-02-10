@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
-import { instructors } from "@/db/schema";
+import { instructors, notifications } from "@/db/schema"; // 👈 Import notifications
 import { eq } from "drizzle-orm";
 import { withAudit } from "@/src/lib/audit";
 import { createResponse } from "@/src/lib/api-response";
@@ -8,6 +8,11 @@ import { requireAccess } from "@/src/lib/auth-guard";
 import { AccessConstants } from "@/src/constants/AccessConstants";
 import { InstructorRegistrationVerifyRejectSchema } from "@/src/services/validation/schemas/instructors/InstructorRegistrationVerifyRejectSchema";
 import { instructorRegistrationStatusConstants } from "@/src/constants/instructorConstants";
+import {
+  systemUserTypes,
+  notificationTypes,
+} from "@/src/constants/systemConstants";
+import { UserType, NotificationType } from "@/src/types/notification"; // 👈 Import Types
 
 const getUserId = (req: Request): number => {
   const testId = req.headers.get("x-user-id");
@@ -18,7 +23,7 @@ export async function PUT(req: NextRequest) {
   // 1. Access Control (Admin only)
   const accessError = await requireAccess(
     req,
-    AccessConstants.INSTRUCTOR_CREATE_EDIT, // Or a specific INSTRUCTOR_VERIFY permission
+    AccessConstants.INSTRUCTOR_CREATE_EDIT,
   );
   if (accessError) return accessError;
 
@@ -74,6 +79,33 @@ export async function PUT(req: NextRequest) {
           });
       },
     );
+
+    // =========================================================================
+    // 🔔 5. CREATE NOTIFICATION (Type-Safe)
+    // =========================================================================
+    let message = "";
+    let notifType: NotificationType = "info";
+
+    if (status === instructorRegistrationStatusConstants.APPROVED) {
+      message =
+        "Your instructor account has been approved. You can now log in.";
+      notifType = notificationTypes.INFO as NotificationType;
+    } else if (status === instructorRegistrationStatusConstants.REJECTED) {
+      message = `Your account registration was rejected. Reason: ${rejection_reason}`;
+      notifType = notificationTypes.ERROR as NotificationType;
+    }
+
+    if (message) {
+      await db.insert(notifications).values({
+        receiver_id: instructor_id,
+        user_type: systemUserTypes.INSTRUCTOR as UserType,
+        notification_type: notifType,
+        message: message,
+        is_read: false,
+        created_by: userId,
+      });
+    }
+    // =========================================================================
 
     return createResponse(
       true,

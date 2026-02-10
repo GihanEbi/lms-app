@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
 import { createResponse } from "@/src/lib/api-response";
+import { systemUserTypes } from "@/src/constants/systemConstants";
 
 export async function POST(request: Request) {
   try {
@@ -44,6 +45,7 @@ export async function POST(request: Request) {
         code: user.code,
         email: user.email,
         group_id: user.group_id,
+        user_type: systemUserTypes.SYSTEM
       },
       process.env.JWT_SECRET! as Secret,
       { expiresIn },

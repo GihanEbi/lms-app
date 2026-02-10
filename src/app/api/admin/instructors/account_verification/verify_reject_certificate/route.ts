@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
-import { instructorVerifications } from "@/db/schema";
+import { instructorVerifications, notifications } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { withAudit } from "@/src/lib/audit";
 import { createResponse } from "@/src/lib/api-response";
@@ -8,6 +8,11 @@ import { requireAccess } from "@/src/lib/auth-guard";
 import { AccessConstants } from "@/src/constants/AccessConstants";
 import { verifyRejectCertificateSchema } from "@/src/services/validation/schemas/instructors/verifyRejectCertificateSchema";
 import { certificateVerificationConstants } from "@/src/constants/instructorConstants";
+import {
+  systemUserTypes,
+  notificationTypes,
+} from "@/src/constants/systemConstants";
+import { UserType, NotificationType } from "@/src/types/notification"; // 👈 Import Types
 
 const getUserId = (req: Request): number => {
   const testId = req.headers.get("x-user-id");
@@ -18,7 +23,7 @@ export async function PUT(req: NextRequest) {
   // 1. Admin Access Check
   const accessError = await requireAccess(
     req,
-    AccessConstants.INSTRUCTOR_CREATE_EDIT, 
+    AccessConstants.INSTRUCTOR_CREATE_EDIT,
   );
   if (accessError) return accessError;
 
@@ -32,7 +37,7 @@ export async function PUT(req: NextRequest) {
 
     const { instructor_id, status, rejection_reason } = body;
 
-    // 3. Check Existence (using instructor_id as key)
+    // 3. Check Existence
     const existing = await db
       .select()
       .from(instructorVerifications)
@@ -62,7 +67,6 @@ export async function PUT(req: NextRequest) {
           .update(instructorVerifications)
           .set({
             status: status,
-            // Clear reason if verified, otherwise set it
             rejection_reason:
               status === certificateVerificationConstants.VERIFIED
                 ? null
@@ -79,6 +83,32 @@ export async function PUT(req: NextRequest) {
           });
       },
     );
+
+    // =========================================================================
+    // 🔔 5. CREATE NOTIFICATION (Type-Safe Version)
+    // =========================================================================
+    let message = "";
+    let notifType: NotificationType = "info"; // Default typed value
+
+    if (status === certificateVerificationConstants.VERIFIED) {
+      message = "Your documents have been successfully verified.";
+      notifType = notificationTypes.INFO as NotificationType;
+    } else if (status === certificateVerificationConstants.REJECTED) {
+      message = `Your documents were rejected. Reason: ${rejection_reason}`;
+      notifType = notificationTypes.ERROR as NotificationType;
+    }
+
+    if (message) {
+      await db.insert(notifications).values({
+        receiver_id: instructor_id,
+        user_type: systemUserTypes.INSTRUCTOR as UserType, // Specific cast
+        notification_type: notifType,
+        message: message,
+        is_read: false,
+        created_by: userId,
+      });
+    }
+    // =========================================================================
 
     return createResponse(
       true,

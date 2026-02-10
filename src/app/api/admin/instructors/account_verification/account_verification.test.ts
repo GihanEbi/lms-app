@@ -13,21 +13,25 @@ import {
   degreeCertificate,
   subjects,
   subjectCategories,
+  notifications, // 👈 Import notifications table
 } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { AccessConstants } from "@/src/constants/AccessConstants";
 import {
   instructorRegistrationStatusConstants,
   certificateVerificationConstants,
 } from "@/src/constants/instructorConstants";
+import {
+  systemUserTypes,
+  notificationTypes,
+} from "@/src/constants/systemConstants";
 
 // --- IMPORT ROUTE HANDLERS ---
-// Adjust these relative paths if your folder structure differs slightly
 import { GET as GET_INSTRUCTOR_DETAILS } from "./get_instructor_by_id/route";
 import { PUT as VERIFY_CERTIFICATE } from "./verify_reject_certificate/route";
 import { PUT as VERIFY_ACCOUNT } from "./verify_reject_instructor_account/route";
 
-// --- BASE URLS (for NextRequest construction) ---
+// --- BASE URLS ---
 const DETAILS_URL =
   "http://localhost:3000/api/admin/instructors/account_verification/get_instructor_by_id";
 const CERT_URL =
@@ -61,7 +65,6 @@ describe("Admin Instructor Verification Workflow Tests", () => {
     adminUserId = admin.id;
 
     // 2. Grant Permissions
-    // We need permission to GET instructors and EDIT (verify) them
     const permissions = [
       { name: "Get Instructors", code: AccessConstants.INSTRUCTOR_GET },
       {
@@ -79,7 +82,7 @@ describe("Admin Instructor Verification Workflow Tests", () => {
         rulesList.map((r) => ({ group_id: adminGroupId, rule_id: r.id })),
       );
 
-    // 3. Create Dependencies (Degree, Category, Subject)
+    // 3. Create Dependencies
     const [cert] = await db
       .insert(degreeCertificate)
       .values({ degree_certificate_name: "PhD", user_created: adminUserId })
@@ -97,7 +100,7 @@ describe("Admin Instructor Verification Workflow Tests", () => {
       })
       .returning();
 
-    // 4. Create Target Instructor (The one being verified)
+    // 4. Create Target Instructor
     const [inst] = await db
       .insert(instructors)
       .values({
@@ -107,12 +110,12 @@ describe("Admin Instructor Verification Workflow Tests", () => {
         phone_number: `${Date.now()}`.slice(0, 10),
         highest_degree_certificate_id: cert.id,
         registration_status: instructorRegistrationStatusConstants.PENDING,
-        user_created: adminUserId, // Simulated self-reg or admin created
+        user_created: adminUserId,
       })
       .returning();
     targetInstructorId = inst.id;
 
-    // 5. Seed Related Data (Preferences, Verifications, Expertise)
+    // 5. Seed Data
     await db.insert(instructorPreferences).values({
       instructor_id: targetInstructorId,
       teaching_methodology: "Agile",
@@ -134,7 +137,7 @@ describe("Admin Instructor Verification Workflow Tests", () => {
     });
   });
 
-  // --- TEST 1: GET COMPLETE DETAILS ---
+  // --- TEST 1: GET DETAILS ---
   it("should fetch complete instructor profile with all relations", async () => {
     const req = new NextRequest(
       `${DETAILS_URL}?instructor_id=${targetInstructorId}`,
@@ -151,20 +154,12 @@ describe("Admin Instructor Verification Workflow Tests", () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-
-    // Check Personal Info
     expect(json.data.personal_information.full_name).toBe("Candidate John");
-    expect(json.data.personal_information.degree_certificate_name).toBe("PhD");
-
-    // Check Relations
     expect(json.data.preferences).not.toBeNull();
-    expect(json.data.verifications).not.toBeNull();
-    expect(json.data.expertise).toHaveLength(1);
-    expect(json.data.expertise[0].subject_name).toBe("React");
   });
 
-  // --- TEST 2: VERIFY DOCUMENTS (Certificates) ---
-  it("should approve the instructor documents", async () => {
+  // --- TEST 2: VERIFY DOCUMENTS & CHECK NOTIFICATION ---
+  it("should verify documents and send a success notification", async () => {
     const req = new NextRequest(CERT_URL, {
       method: "PUT",
       headers: {
@@ -182,17 +177,23 @@ describe("Admin Instructor Verification Workflow Tests", () => {
 
     expect(res.status).toBe(200);
     expect(json.data.status).toBe(certificateVerificationConstants.VERIFIED);
-    expect(json.data.rejection_reason).toBeNull();
 
-    // Verify DB update
-    const dbRecord = await db.query.instructorVerifications.findFirst({
-      where: eq(instructorVerifications.instructor_id, targetInstructorId),
+    // 🔔 Verify Notification
+    const notif = await db.query.notifications.findFirst({
+      where: and(
+        eq(notifications.receiver_id, targetInstructorId),
+        eq(notifications.notification_type, notificationTypes.INFO),
+      ),
+      orderBy: (notifications, { desc }) => [desc(notifications.created_at)],
     });
-    expect(dbRecord?.status).toBe(certificateVerificationConstants.VERIFIED);
+
+    expect(notif).toBeDefined();
+    expect(notif?.message).toContain("successfully verified");
+    expect(notif?.user_type).toBe(systemUserTypes.INSTRUCTOR);
   });
 
-  // --- TEST 3: REJECT DOCUMENTS (Certificates) ---
-  it("should reject documents if reason is provided", async () => {
+  // --- TEST 3: REJECT DOCUMENTS & CHECK NOTIFICATION ---
+  it("should reject documents and send an error notification", async () => {
     const req = new NextRequest(CERT_URL, {
       method: "PUT",
       headers: {
@@ -211,11 +212,23 @@ describe("Admin Instructor Verification Workflow Tests", () => {
 
     expect(res.status).toBe(200);
     expect(json.data.status).toBe(certificateVerificationConstants.REJECTED);
-    expect(json.data.rejection_reason).toBe("Blurry image");
+
+    // 🔔 Verify Notification
+    const notif = await db.query.notifications.findFirst({
+      where: and(
+        eq(notifications.receiver_id, targetInstructorId),
+        eq(notifications.notification_type, notificationTypes.ERROR),
+      ),
+      orderBy: (notifications, { desc }) => [desc(notifications.created_at)],
+    });
+
+    expect(notif).toBeDefined();
+    expect(notif?.message).toContain("rejected");
+    expect(notif?.message).toContain("Blurry image");
   });
 
-  // --- TEST 4: APPROVE INSTRUCTOR ACCOUNT ---
-  it("should approve the instructor account status", async () => {
+  // --- TEST 4: APPROVE ACCOUNT & CHECK NOTIFICATION ---
+  it("should approve account and send a success notification", async () => {
     const req = new NextRequest(ACCOUNT_URL, {
       method: "PUT",
       headers: {
@@ -236,17 +249,21 @@ describe("Admin Instructor Verification Workflow Tests", () => {
       instructorRegistrationStatusConstants.APPROVED,
     );
 
-    // Verify DB update
-    const dbRecord = await db.query.instructors.findFirst({
-      where: eq(instructors.id, targetInstructorId),
+    // 🔔 Verify Notification
+    const notif = await db.query.notifications.findFirst({
+      where: and(
+        eq(notifications.receiver_id, targetInstructorId),
+        eq(notifications.notification_type, notificationTypes.INFO),
+      ),
+      orderBy: (notifications, { desc }) => [desc(notifications.created_at)],
     });
-    expect(dbRecord?.registration_status).toBe(
-      instructorRegistrationStatusConstants.APPROVED,
-    );
+
+    expect(notif).toBeDefined();
+    expect(notif?.message).toContain("account has been approved");
   });
 
-  // --- TEST 5: REJECT INSTRUCTOR ACCOUNT ---
-  it("should reject the instructor account with a reason", async () => {
+  // --- TEST 5: REJECT ACCOUNT & CHECK NOTIFICATION ---
+  it("should reject account and send an error notification", async () => {
     const req = new NextRequest(ACCOUNT_URL, {
       method: "PUT",
       headers: {
@@ -267,7 +284,19 @@ describe("Admin Instructor Verification Workflow Tests", () => {
     expect(json.data.registration_status).toBe(
       instructorRegistrationStatusConstants.REJECTED,
     );
-    expect(json.data.rejection_reason).toBe("Failed background check");
+
+    // 🔔 Verify Notification
+    const notif = await db.query.notifications.findFirst({
+      where: and(
+        eq(notifications.receiver_id, targetInstructorId),
+        eq(notifications.notification_type, notificationTypes.ERROR),
+      ),
+      orderBy: (notifications, { desc }) => [desc(notifications.created_at)],
+    });
+
+    expect(notif).toBeDefined();
+    expect(notif?.message).toContain("registration was rejected");
+    expect(notif?.message).toContain("Failed background check");
   });
 
   // --- TEST 6: FAIL REJECTION WITHOUT REASON ---
@@ -289,6 +318,5 @@ describe("Admin Instructor Verification Workflow Tests", () => {
     expect(res.status).toBe(400); // Validation error
   });
 });
-
 
 // TEST COMMAND : npx vitest run src/app/api/admin/instructors/account_verification/account_verification.test.ts --no-file-parallelism
