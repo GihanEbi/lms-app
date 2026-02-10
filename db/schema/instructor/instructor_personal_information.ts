@@ -37,6 +37,7 @@ export const instructors = pgTable("instructor_personal_information", {
   registration_status: varchar("registration_status", { length: 50 })
     .default(instructorRegistrationStatusConstants.PENDING)
     .notNull(),
+  rejection_reason: text("rejection_reason"),
 
   // Audit Fields
   user_created: integer("user_created").references(() => users.id, {
