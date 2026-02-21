@@ -2,12 +2,15 @@ export const courseLevels = {
   BEGINNER: "Beginner",
   INTERMEDIATE: "Intermediate",
   ADVANCED: "Advanced",
-  ALL_LEVELS: "All Levels",
+  ALL_LEVELS: "All_Levels",
 };
 
 export const courseStatus = {
   DRAFT: "Draft",
+  PENDING_REVIEW: "Pending_Review",
+  REJECT: "Reject",
   PUBLISHED: "Published",
+  TEMPORARY_DISABLED: "Temporary_Disabled",
   ARCHIVED: "Archived",
 };
 

@@ -27,6 +27,7 @@ import { eq } from "drizzle-orm";
 import { POST as CREATE_BASIC_INFO } from "@/src/app/api/instructor/courses/create_course/basic_information/route";
 import { POST as CREATE_SECTION } from "@/src/app/api/instructor/courses/create_course/curriculum/route";
 import { PUT as UPDATE_PRICING } from "@/src/app/api/instructor/courses/create_course/pricing/[id]/route";
+import { POST as SUBMIT_COURSE } from "@/src/app/api/instructor/courses/create_course/submit/[id]/route"; // 👈 Ensure this path matches your folder structure
 
 // --- BASE URLS ---
 const BASE_URL = "http://localhost:3000/api/instructor/courses/create_course";
@@ -119,6 +120,7 @@ describe("Course Creation Full Workflow (Sequential)", () => {
 
     expect(basicInfoRes.status).toBe(201);
     expect(basicInfoJson.data.id).toBeDefined();
+    expect(basicInfoJson.data.status).toBe(courseStatus.DRAFT); // Starts as DRAFT
 
     const createdCourseId = basicInfoJson.data.id; // Capture ID for next steps
 
@@ -139,7 +141,7 @@ describe("Course Creation Full Workflow (Sequential)", () => {
           {
             title: "Welcome Video",
             type: "video",
-            video_url: "https://vid.com/1", // Use valid URI format
+            video_url: "https://vid.com/1",
             video_duration: 120,
           },
           {
@@ -192,8 +194,10 @@ describe("Course Creation Full Workflow (Sequential)", () => {
       },
     );
 
-    const params = Promise.resolve({ id: createdCourseId.toString() });
-    const pricingRes = await UPDATE_PRICING(pricingReq, { params });
+    const pricingParams = Promise.resolve({ id: createdCourseId.toString() });
+    const pricingRes = await UPDATE_PRICING(pricingReq, {
+      params: pricingParams,
+    });
     const pricingJson = await pricingRes.json();
 
     expect(pricingRes.status).toBe(200);
@@ -214,7 +218,34 @@ describe("Course Creation Full Workflow (Sequential)", () => {
       .where(eq(course_coupons.course_id, createdCourseId));
     expect(couponsDb).toHaveLength(1);
     expect(couponsDb[0].code).toBe("LAUNCH50");
+
+    // =========================================================================
+    // STEP 4: SUBMIT COURSE FOR REVIEW
+    // =========================================================================
+    const submitReq = new NextRequest(`${BASE_URL}/submit/${createdCourseId}`, {
+      method: "POST",
+      headers: {
+        "x-user-id": userId.toString(),
+        "x-group-id": groupId.toString(),
+      },
+    });
+
+    const submitParams = Promise.resolve({ id: createdCourseId.toString() });
+    const submitRes = await SUBMIT_COURSE(submitReq, { params: submitParams });
+    const submitJson = await submitRes.json();
+
+    expect(submitRes.status).toBe(200);
+    expect(submitJson.data.status).toBe(courseStatus.PENDING_REVIEW);
+
+    // Verify Final DB Status Update
+    const finalCourseDb = await db
+      .select()
+      .from(courses)
+      .where(eq(courses.id, createdCourseId))
+      .limit(1);
+
+    expect(finalCourseDb[0].status).toBe(courseStatus.PENDING_REVIEW);
   });
 });
 
-// command = npx vitest run src/app/api/testing_workflows/course_creation_workflow.test.ts --no-file-parallelism
+// // command = npx vitest run src/app/api/testing_workflows/course_creation_workflow.test.ts --no-file-parallelism
