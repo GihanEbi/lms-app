@@ -1,0 +1,1358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LMS Architecture Design</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Syne:wght@400;600;700;800&display=swap');
+
+  :root {
+    --bg: #0a0e17;
+    --surface: #111827;
+    --surface2: #1a2234;
+    --border: #1e2d45;
+    --accent: #3b82f6;
+    --accent2: #06b6d4;
+    --accent3: #8b5cf6;
+    --green: #10b981;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --dim: #334155;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'JetBrains Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* HEADER */
+  .header {
+    padding: 2rem 3rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(90deg, rgba(59,130,246,0.05) 0%, transparent 60%);
+  }
+
+  .header-left h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .header-left p {
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-top: 0.3rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: rgba(16,185,129,0.1);
+    border: 1px solid rgba(16,185,129,0.3);
+    color: var(--green);
+    font-size: 0.65rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 2px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* TABS */
+  .tabs {
+    display: flex;
+    gap: 0;
+    padding: 0 3rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .tab {
+    padding: 0.9rem 1.5rem;
+    font-size: 0.7rem;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    cursor: pointer;
+    color: var(--muted);
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* MAIN */
+  .content { display: none; }
+  .content.active { display: block; }
+
+  /* RECOMMENDATION BANNER */
+  .rec-banner {
+    margin: 2rem 3rem 0;
+    padding: 1rem 1.5rem;
+    background: linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(6,182,212,0.05) 100%);
+    border: 1px solid rgba(59,130,246,0.25);
+    border-left: 3px solid var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .rec-banner .rec-label {
+    font-size: 0.6rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+  }
+
+  .rec-banner p { font-size: 0.72rem; color: var(--text); line-height: 1.5; }
+
+  /* ARCH DIAGRAM AREA */
+  .arch-container {
+    padding: 2rem 3rem;
+    overflow-x: auto;
+  }
+
+  .arch-diagram {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-width: 900px;
+  }
+
+  /* LAYERS */
+  .layer {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 1px dashed var(--dim);
+    position: relative;
+  }
+
+  .layer-label {
+    width: 120px;
+    min-width: 120px;
+    padding: 1.2rem 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 1.2rem;
+    border-right: 1px solid var(--dim);
+  }
+
+  .layer-label span {
+    font-size: 0.6rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    writing-mode: horizontal-tb;
+    text-align: right;
+  }
+
+  .layer-content {
+    flex: 1;
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  /* NODES */
+  .node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.7rem 1rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    min-width: 110px;
+    cursor: default;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  .node:hover {
+    border-color: var(--accent);
+    background: var(--surface2);
+    transform: translateY(-2px);
+    z-index: 10;
+  }
+
+  .node .icon {
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .node .node-title {
+    font-size: 0.62rem;
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.3;
+    color: var(--text);
+  }
+
+  .node .node-sub {
+    font-size: 0.55rem;
+    color: var(--muted);
+    text-align: center;
+    line-height: 1.3;
+  }
+
+  /* Node color variants */
+  .node.blue { border-color: rgba(59,130,246,0.4); }
+  .node.blue .icon { filter: drop-shadow(0 0 6px rgba(59,130,246,0.5)); }
+  .node.cyan { border-color: rgba(6,182,212,0.4); }
+  .node.cyan .icon { filter: drop-shadow(0 0 6px rgba(6,182,212,0.5)); }
+  .node.green { border-color: rgba(16,185,129,0.4); }
+  .node.green .icon { filter: drop-shadow(0 0 6px rgba(16,185,129,0.5)); }
+  .node.purple { border-color: rgba(139,92,246,0.4); }
+  .node.purple .icon { filter: drop-shadow(0 0 6px rgba(139,92,246,0.5)); }
+  .node.amber { border-color: rgba(245,158,11,0.4); }
+  .node.amber .icon { filter: drop-shadow(0 0 6px rgba(245,158,11,0.5)); }
+  .node.red { border-color: rgba(239,68,68,0.4); }
+
+  /* Group box */
+  .node-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem 0.5rem 0.6rem;
+    border: 1px dashed var(--dim);
+    background: rgba(255,255,255,0.01);
+    position: relative;
+  }
+
+  .node-group::before {
+    content: attr(data-label);
+    position: absolute;
+    top: -0.6rem;
+    left: 0.8rem;
+    background: var(--bg);
+    padding: 0 0.3rem;
+    font-size: 0.52rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* ARROW section */
+  .arrow-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.4rem 0;
+    gap: 4rem;
+  }
+
+  .arrow-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+  }
+
+  .arrow-line {
+    width: 1px;
+    height: 20px;
+    background: linear-gradient(to bottom, transparent, var(--dim));
+    position: relative;
+  }
+
+  .arrow-line::after {
+    content: '▼';
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.5rem;
+    color: var(--dim);
+  }
+
+  /* DECISION TABLE */
+  .decision-grid {
+    margin: 2rem 3rem;
+    display: grid;
+    grid-template-columns: 200px 1fr 1fr;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .dg-cell {
+    padding: 0.75rem 1rem;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  .dg-cell:last-child { border-right: none; }
+
+  .dg-header {
+    background: var(--surface2);
+    font-weight: 600;
+    font-family: 'Syne', sans-serif;
+    font-size: 0.7rem;
+    text-align: center;
+  }
+
+  .dg-label {
+    background: rgba(255,255,255,0.02);
+    color: var(--muted);
+    font-size: 0.62rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .dg-win { color: var(--green); }
+  .dg-lose { color: var(--red); }
+  .dg-neutral { color: var(--muted); }
+
+  .opt1-header { border-top: 3px solid var(--accent); }
+  .opt2-header { border-top: 3px solid var(--accent3); }
+
+  .verdict {
+    margin: 0 3rem 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  .verdict-card {
+    padding: 1.2rem 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .verdict-card h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 700;
+    margin-bottom: 0.6rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .verdict-card p { font-size: 0.65rem; color: var(--muted); line-height: 1.7; }
+
+  .verdict-card.winner {
+    border-color: rgba(59,130,246,0.4);
+    background: linear-gradient(135deg, rgba(59,130,246,0.06) 0%, var(--surface) 60%);
+  }
+
+  .verdict-card.winner h3 { color: var(--accent); }
+
+  .tag-chip {
+    display: inline-block;
+    font-size: 0.58rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 1px;
+    margin: 0.2rem 0.15rem 0 0;
+    letter-spacing: 0.05em;
+  }
+
+  .chip-green { background: rgba(16,185,129,0.1); color: var(--green); border: 1px solid rgba(16,185,129,0.25); }
+  .chip-red { background: rgba(239,68,68,0.1); color: var(--red); border: 1px solid rgba(239,68,68,0.25); }
+  .chip-amber { background: rgba(245,158,11,0.1); color: var(--amber); border: 1px solid rgba(245,158,11,0.25); }
+  .chip-blue { background: rgba(59,130,246,0.1); color: var(--accent); border: 1px solid rgba(59,130,246,0.25); }
+
+  /* DB SCHEMA SECTION */
+  .schema-grid {
+    padding: 2rem 3rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+  }
+
+  .schema-card {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  .schema-card-header {
+    padding: 0.5rem 0.8rem;
+    background: var(--surface2);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .schema-card-header .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .schema-card-header h4 {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+  }
+
+  .schema-card-header .group-tag {
+    margin-left: auto;
+    font-size: 0.52rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .schema-fields {
+    padding: 0.4rem 0;
+  }
+
+  .schema-field {
+    padding: 0.2rem 0.8rem;
+    font-size: 0.6rem;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    line-height: 1.6;
+  }
+
+  .schema-field .field-type {
+    font-size: 0.52rem;
+    color: var(--accent2);
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
+  .schema-field.pk { color: var(--amber); }
+  .schema-field.fk { color: rgba(139,92,246,0.8); }
+
+  /* CICD */
+  .cicd-flow {
+    padding: 2rem 3rem;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-wrap: wrap;
+    row-gap: 1rem;
+  }
+
+  .flow-step {
+    display: flex;
+    align-items: center;
+  }
+
+  .flow-box {
+    padding: 0.8rem 1.2rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    min-width: 120px;
+    text-align: center;
+  }
+
+  .flow-box .flow-icon { font-size: 1.2rem; display: block; margin-bottom: 0.3rem; }
+  .flow-box .flow-title { font-size: 0.62rem; font-weight: 600; color: var(--text); }
+  .flow-box .flow-sub { font-size: 0.55rem; color: var(--muted); margin-top: 0.2rem; }
+
+  .flow-arrow {
+    width: 40px;
+    height: 1px;
+    background: var(--dim);
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .flow-arrow::after {
+    content: '▶';
+    position: absolute;
+    right: -6px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.5rem;
+    color: var(--dim);
+  }
+
+  /* sections */
+  .section-title {
+    padding: 1.5rem 3rem 0.5rem;
+    font-family: 'Syne', sans-serif;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+  }
+
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* TOOLTIP */
+  .node[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.7rem;
+    font-size: 0.58rem;
+    white-space: nowrap;
+    color: var(--muted);
+    z-index: 100;
+    pointer-events: none;
+  }
+
+  .infra-notes {
+    margin: 0 3rem 1.5rem;
+    padding: 1rem 1.5rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+  }
+
+  .infra-note h4 {
+    font-size: 0.62rem;
+    color: var(--accent2);
+    margin-bottom: 0.4rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .infra-note p { font-size: 0.6rem; color: var(--muted); line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>LMS · Architecture Design</h1>
+    <p>System Design — 100 Concurrent Users · Prototype Phase</p>
+  </div>
+  <span class="badge">● Prototype Ready</span>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="showTab('option1')">Option 1 — NestJS + Next.js</button>
+  <button class="tab" onclick="showTab('option2')">Option 2 — Serverless AWS</button>
+  <button class="tab" onclick="showTab('compare')">Comparison</button>
+  <button class="tab" onclick="showTab('schema')">DB Schema</button>
+  <button class="tab" onclick="showTab('cicd')">CI/CD Pipeline</button>
+</div>
+
+<!-- ===================== OPTION 1 ===================== -->
+<div class="content active" id="option1">
+
+  <div class="rec-banner">
+    <span class="rec-label">★ Recommended</span>
+    <p>Best fit for 100 concurrent users with fast prototype delivery. Full control over infrastructure, straightforward local development, and the NestJS + Next.js stack is a well-understood, battle-tested combination for LMS-scale applications.</p>
+  </div>
+
+  <div class="section-title">Architecture Overview</div>
+
+  <div class="arch-container">
+    <div class="arch-diagram">
+
+      <!-- CLIENT -->
+      <div class="layer">
+        <div class="layer-label"><span>Client</span></div>
+        <div class="layer-content">
+          <div class="node blue" title="Next.js 14 App Router — SSR + Client Components">
+            <span class="icon">🌐</span>
+            <span class="node-title">Next.js 14</span>
+            <span class="node-sub">App Router · SSR</span>
+          </div>
+          <div class="node cyan" title="React Query for data fetching and caching">
+            <span class="icon">⚡</span>
+            <span class="node-title">React Query</span>
+            <span class="node-sub">Client Cache</span>
+          </div>
+          <div class="node blue" title="NextAuth.js for session management">
+            <span class="icon">🔐</span>
+            <span class="node-title">NextAuth.js</span>
+            <span class="node-sub">Auth Sessions</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- GATEWAY -->
+      <div class="layer">
+        <div class="layer-label"><span>Gateway</span></div>
+        <div class="layer-content">
+          <div class="node green" title="Nginx reverse proxy with rate limiting">
+            <span class="icon">🛡</span>
+            <span class="node-title">Nginx</span>
+            <span class="node-sub">Reverse Proxy · Rate Limit</span>
+          </div>
+          <div class="node amber" title="SSL termination via Let's Encrypt / Certbot">
+            <span class="icon">🔒</span>
+            <span class="node-title">TLS/SSL</span>
+            <span class="node-sub">Let's Encrypt</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- API LAYER -->
+      <div class="layer">
+        <div class="layer-label"><span>API</span></div>
+        <div class="layer-content">
+          <div class="node-group" data-label="NestJS API Server">
+            <div class="node blue" title="Auth module: JWT, refresh tokens, sessions">
+              <span class="icon">🔑</span>
+              <span class="node-title">Auth Module</span>
+              <span class="node-sub">JWT · Refresh</span>
+            </div>
+            <div class="node blue" title="Courses, sections, content, quizzes">
+              <span class="icon">📚</span>
+              <span class="node-title">Course Module</span>
+              <span class="node-sub">CRUD · Sections</span>
+            </div>
+            <div class="node blue" title="Enrollments, progress tracking, certificates">
+              <span class="icon">🎓</span>
+              <span class="node-title">Student Module</span>
+              <span class="node-sub">Progress · Certs</span>
+            </div>
+            <div class="node blue" title="Submissions, grading, feedback">
+              <span class="icon">📝</span>
+              <span class="node-title">Assessment Module</span>
+              <span class="node-sub">Quizzes · Assignments</span>
+            </div>
+            <div class="node blue" title="In-app, email, SMS notifications">
+              <span class="icon">🔔</span>
+              <span class="node-title">Notification Module</span>
+              <span class="node-sub">In-App · Email · SMS</span>
+            </div>
+            <div class="node blue" title="File upload, storage management">
+              <span class="icon">📁</span>
+              <span class="node-title">Storage Module</span>
+              <span class="node-sub">Upload · Files</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CACHE LAYER -->
+      <div class="layer">
+        <div class="layer-label"><span>Cache</span></div>
+        <div class="layer-content">
+          <div class="node red" title="Redis: session store, JWT blacklist, rate limiting, course catalog cache">
+            <span class="icon">⚡</span>
+            <span class="node-title">Redis</span>
+            <span class="node-sub">Sessions · JWT Blacklist</span>
+          </div>
+          <div class="node amber" title="Cache: course catalog, user profiles, quiz settings (TTL 5–30 min)">
+            <span class="icon">🗂</span>
+            <span class="node-title">Cache Strategy</span>
+            <span class="node-sub">Courses · Profiles · TTL</span>
+          </div>
+          <div class="node purple" title="Bull queues for email/SMS dispatch, certificate generation">
+            <span class="icon">🔄</span>
+            <span class="node-title">BullMQ</span>
+            <span class="node-sub">Email · Cert Queues</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- DATA LAYER -->
+      <div class="layer">
+        <div class="layer-label"><span>Data</span></div>
+        <div class="layer-content">
+          <div class="node green" title="PostgreSQL: main relational DB with all schema tables">
+            <span class="icon">🐘</span>
+            <span class="node-title">PostgreSQL</span>
+            <span class="node-sub">Primary DB · Prisma ORM</span>
+          </div>
+          <div class="node amber" title="Local or S3-compatible object storage for videos, PDFs, avatars">
+            <span class="icon">🗄</span>
+            <span class="node-title">File Storage</span>
+            <span class="node-sub">S3 / MinIO · Videos · PDFs</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- EXTERNAL -->
+      <div class="layer">
+        <div class="layer-label"><span>External</span></div>
+        <div class="layer-content">
+          <div class="node cyan" title="SMTP via Resend or Nodemailer for email notifications">
+            <span class="icon">📧</span>
+            <span class="node-title">Email SMTP</span>
+            <span class="node-sub">Resend / Nodemailer</span>
+          </div>
+          <div class="node cyan" title="Twilio or local SMS gateway for SMS notifications">
+            <span class="icon">💬</span>
+            <span class="node-title">SMS Gateway</span>
+            <span class="node-sub">Twilio / Local</span>
+          </div>
+          <div class="node purple" title="YouTube / Vimeo / S3 for video streaming as defined in schema">
+            <span class="icon">▶️</span>
+            <span class="node-title">Video Providers</span>
+            <span class="node-sub">YouTube · Vimeo · S3</span>
+          </div>
+          <div class="node amber" title="Payment gateway for course purchases (coupon_codes, currencies in schema)">
+            <span class="icon">💳</span>
+            <span class="node-title">Payment</span>
+            <span class="node-sub">Stripe / Local GW</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="section-title">Infrastructure Notes</div>
+  <div class="infra-notes">
+    <div class="infra-note">
+      <h4>Deployment Target</h4>
+      <p>Single VPS (4 vCPU, 8GB RAM) is sufficient for 100 concurrent users. Docker Compose manages Next.js, NestJS, PostgreSQL, Redis. Easily upgradeable to separate servers as you scale.</p>
+    </div>
+    <div class="infra-note">
+      <h4>Redis Caching Strategy</h4>
+      <p>Cache course catalog (TTL 10min), user session tokens, JWT blacklist for logout, and BullMQ job queues. Estimated hit rate ~70% for read-heavy LMS operations like course listing and content viewing.</p>
+    </div>
+    <div class="infra-note">
+      <h4>Quick Prototype Path</h4>
+      <p>Start with docker-compose.yml on a single host. Use Prisma migrations for schema from drawio. GitHub Actions → SSH deploy. Estimated time to working prototype: 1–2 weeks.</p>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===================== OPTION 2 ===================== -->
+<div class="content" id="option2">
+
+  <div class="rec-banner" style="border-left-color: var(--accent3); border-color: rgba(139,92,246,0.25); background: linear-gradient(135deg, rgba(139,92,246,0.06) 0%, transparent 100%);">
+    <span class="rec-label" style="color: var(--accent3);">Option 2</span>
+    <p>AWS Serverless is powerful for scale but adds significant complexity for a prototype. Cold starts and Lambda function limits can hurt real-time LMS experiences. Better suited for a v2 migration once the product is validated.</p>
+  </div>
+
+  <div class="section-title">Architecture Overview</div>
+
+  <div class="arch-container">
+    <div class="arch-diagram">
+
+      <div class="layer">
+        <div class="layer-label"><span>Client</span></div>
+        <div class="layer-content">
+          <div class="node blue" title="Next.js deployed on Vercel or Amplify">
+            <span class="icon">🌐</span>
+            <span class="node-title">Next.js 14</span>
+            <span class="node-sub">Vercel / Amplify</span>
+          </div>
+          <div class="node cyan" title="CloudFront CDN for static assets and API edge caching">
+            <span class="icon">🚀</span>
+            <span class="node-title">CloudFront CDN</span>
+            <span class="node-sub">Edge Cache</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="layer-label"><span>Gateway</span></div>
+        <div class="layer-content">
+          <div class="node green" title="AWS API Gateway (HTTP API) routes requests to Lambda functions">
+            <span class="icon">🛡</span>
+            <span class="node-title">API Gateway</span>
+            <span class="node-sub">AWS HTTP API</span>
+          </div>
+          <div class="node amber" title="AWS Cognito for user authentication and JWT management">
+            <span class="icon">🔐</span>
+            <span class="node-title">Cognito</span>
+            <span class="node-sub">Auth · JWT</span>
+          </div>
+          <div class="node red" title="WAF for DDoS protection and rate limiting">
+            <span class="icon">🔒</span>
+            <span class="node-title">AWS WAF</span>
+            <span class="node-sub">Rate Limit · DDoS</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="layer-label"><span>Compute</span></div>
+        <div class="layer-content">
+          <div class="node-group" data-label="Lambda Functions">
+            <div class="node purple" title="Auth Lambda: login, register, refresh token">
+              <span class="icon">λ</span>
+              <span class="node-title">Auth Lambda</span>
+              <span class="node-sub">Login · Register</span>
+            </div>
+            <div class="node purple" title="Course Lambda: CRUD for courses, sections, content">
+              <span class="icon">λ</span>
+              <span class="node-title">Course Lambda</span>
+              <span class="node-sub">Courses · Content</span>
+            </div>
+            <div class="node purple" title="Student Lambda: enrollments, progress, certs">
+              <span class="icon">λ</span>
+              <span class="node-title">Student Lambda</span>
+              <span class="node-sub">Progress · Certs</span>
+            </div>
+            <div class="node purple" title="Assessment Lambda: quizzes, submissions, grading">
+              <span class="icon">λ</span>
+              <span class="node-title">Assessment Lambda</span>
+              <span class="node-sub">Quizzes · Grades</span>
+            </div>
+            <div class="node purple" title="Notification Lambda: triggered by EventBridge">
+              <span class="icon">λ</span>
+              <span class="node-title">Notification Lambda</span>
+              <span class="node-sub">SES · SNS</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="layer-label"><span>Events / Queue</span></div>
+        <div class="layer-content">
+          <div class="node amber" title="EventBridge for async events: certificate generation, notifications">
+            <span class="icon">⚡</span>
+            <span class="node-title">EventBridge</span>
+            <span class="node-sub">Async Events</span>
+          </div>
+          <div class="node cyan" title="SQS queues for notification dispatch and background jobs">
+            <span class="icon">📬</span>
+            <span class="node-title">SQS Queues</span>
+            <span class="node-sub">Background Jobs</span>
+          </div>
+          <div class="node red" title="ElastiCache (Redis) for session store and caching">
+            <span class="icon">⚡</span>
+            <span class="node-title">ElastiCache</span>
+            <span class="node-sub">Redis · Sessions</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="layer-label"><span>Data</span></div>
+        <div class="layer-content">
+          <div class="node green" title="RDS Aurora PostgreSQL Serverless v2 — scales to zero between requests">
+            <span class="icon">🐘</span>
+            <span class="node-title">Aurora PostgreSQL</span>
+            <span class="node-sub">RDS Serverless v2</span>
+          </div>
+          <div class="node amber" title="S3 for video files, PDFs, certificates, avatars">
+            <span class="icon">🗄</span>
+            <span class="node-title">S3 Storage</span>
+            <span class="node-sub">Videos · PDFs · Certs</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="layer">
+        <div class="layer-label"><span>Notifications</span></div>
+        <div class="layer-content">
+          <div class="node cyan" title="SES for transactional email — email verification, notifications">
+            <span class="icon">📧</span>
+            <span class="node-title">AWS SES</span>
+            <span class="node-sub">Email</span>
+          </div>
+          <div class="node cyan" title="SNS for SMS push notifications">
+            <span class="icon">💬</span>
+            <span class="node-title">AWS SNS</span>
+            <span class="node-sub">SMS · Push</span>
+          </div>
+          <div class="node green" title="AWS MediaConvert for video transcoding">
+            <span class="icon">▶️</span>
+            <span class="node-title">MediaConvert</span>
+            <span class="node-sub">Video Transcoding</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="section-title">Infrastructure Notes</div>
+  <div class="infra-notes">
+    <div class="infra-note">
+      <h4>Serverless Trade-offs</h4>
+      <p>Lambda cold starts (100–500ms) impact quiz/assessment user experience. Aurora Serverless v2 has connection pool limits — use RDS Proxy. IaC via AWS CDK or Terraform recommended from day one.</p>
+    </div>
+    <div class="infra-note">
+      <h4>Cost at Prototype Scale</h4>
+      <p>For 100 concurrent users, AWS serverless may cost more than a VPS. Aurora Serverless minimum cost ~$50–70/mo even with low traffic. Lambda + API Gateway costs scale well but add up with RDS Proxy.</p>
+    </div>
+    <div class="infra-note">
+      <h4>When to Choose This</h4>
+      <p>Choose AWS serverless if you expect rapid scale beyond 500+ concurrent users post-prototype, have a team experienced with AWS, or have compliance requirements that mandate cloud-managed infrastructure.</p>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===================== COMPARE ===================== -->
+<div class="content" id="compare">
+
+  <div class="section-title">Side-by-Side Comparison</div>
+
+  <div class="decision-grid">
+    <div class="dg-cell dg-header" style="background: var(--bg)"></div>
+    <div class="dg-cell dg-header opt1-header">Option 1 · NestJS + Next.js</div>
+    <div class="dg-cell dg-header opt2-header">Option 2 · AWS Serverless</div>
+
+    <div class="dg-cell dg-label">Prototype Speed</div>
+    <div class="dg-cell dg-win">✓ 1–2 weeks with Docker Compose + Github Actions deploy</div>
+    <div class="dg-cell dg-lose">✗ 3–5 weeks — IAM, Lambda setup, CDK, Cognito config</div>
+
+    <div class="dg-cell dg-label">100 Concurrent Users</div>
+    <div class="dg-cell dg-win">✓ Single 4-core VPS handles comfortably with Nginx + Redis</div>
+    <div class="dg-cell dg-win">✓ Handles easily — Lambda scales horizontally</div>
+
+    <div class="dg-cell dg-label">Local Development</div>
+    <div class="dg-cell dg-win">✓ docker-compose up — identical to production</div>
+    <div class="dg-cell dg-lose">✗ LocalStack partial emulation — subtle differences</div>
+
+    <div class="dg-cell dg-label">GitHub Actions CI/CD</div>
+    <div class="dg-cell dg-win">✓ Simple: test → build → SSH deploy</div>
+    <div class="dg-cell dg-neutral">~ More complex: CDK deploy, Lambda packaging</div>
+
+    <div class="dg-cell dg-label">Monthly Cost (Prototype)</div>
+    <div class="dg-cell dg-win">✓ ~$20–40/mo (VPS + S3 for media)</div>
+    <div class="dg-cell dg-lose">✗ ~$80–150/mo (Aurora, ElastiCache, API GW, Lambdas)</div>
+
+    <div class="dg-cell dg-label">Real-time Features</div>
+    <div class="dg-cell dg-win">✓ WebSocket / Socket.io native with NestJS</div>
+    <div class="dg-cell dg-lose">✗ API Gateway WebSocket is complex and costly</div>
+
+    <div class="dg-cell dg-label">Debugging & Logs</div>
+    <div class="dg-cell dg-win">✓ Standard logs, easy stack traces, local debugger</div>
+    <div class="dg-cell dg-lose">✗ CloudWatch logs, distributed tracing complexity</div>
+
+    <div class="dg-cell dg-label">Database Connections</div>
+    <div class="dg-cell dg-win">✓ Persistent Prisma connection pool — no cold-start issues</div>
+    <div class="dg-cell dg-lose">✗ Lambda connection limits — need RDS Proxy ($35/mo)</div>
+
+    <div class="dg-cell dg-label">Scale Beyond 1000+ CCU</div>
+    <div class="dg-cell dg-neutral">~ Requires manual horizontal scaling (multi-server)</div>
+    <div class="dg-cell dg-win">✓ Auto-scales transparently</div>
+
+    <div class="dg-cell dg-label">Team Learning Curve</div>
+    <div class="dg-cell dg-win">✓ Standard Node.js stack — widely known</div>
+    <div class="dg-cell dg-lose">✗ AWS expertise required for all services</div>
+
+    <div class="dg-cell dg-label">Vendor Lock-in</div>
+    <div class="dg-cell dg-win">✓ Portable — runs on any Linux host or cloud</div>
+    <div class="dg-cell dg-lose">✗ Deep AWS dependency — migration costly later</div>
+  </div>
+
+  <div class="section-title">Verdict</div>
+
+  <div class="verdict">
+    <div class="verdict-card winner">
+      <h3>★ Option 1 — NestJS + Next.js + Redis</h3>
+      <p>The clear winner for your prototype. Your 100 CCU target is well within a single VPS capacity. NestJS modules map directly to your DB schema groups (auth, courses, students, assessments). Redis handles session management, JWT blacklisting, and course catalog caching out of the box. You'll be deploying in days not weeks.</p>
+      <div style="margin-top: 0.6rem;">
+        <span class="tag-chip chip-green">Fast Prototype</span>
+        <span class="tag-chip chip-green">Low Cost</span>
+        <span class="tag-chip chip-green">Full Control</span>
+        <span class="tag-chip chip-green">Easy Debug</span>
+        <span class="tag-chip chip-blue">Scalable to ~500 CCU</span>
+      </div>
+    </div>
+    <div class="verdict-card">
+      <h3>Option 2 — AWS Serverless</h3>
+      <p>Powerful for production scale, but over-engineered for your current phase. Adds 3–4x development complexity, higher monthly costs, and significant AWS-specific knowledge requirements. Recommend migrating to this architecture at v2 or when you consistently exceed 500+ concurrent users.</p>
+      <div style="margin-top: 0.6rem;">
+        <span class="tag-chip chip-amber">Better for v2</span>
+        <span class="tag-chip chip-red">Higher Cost Now</span>
+        <span class="tag-chip chip-red">Complex Setup</span>
+        <span class="tag-chip chip-green">Unlimited Scale</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===================== SCHEMA ===================== -->
+<div class="content" id="schema">
+
+  <div class="section-title">DB Schema — Grouped by Domain</div>
+
+  <div class="schema-grid">
+
+    <!-- Auth Domain -->
+    <div class="schema-card">
+      <div class="schema-card-header">
+        <div class="dot" style="background:#3b82f6"></div>
+        <h4>users</h4>
+        <span class="group-tag">auth</span>
+      </div>
+      <div class="schema-fields">
+        <div class="schema-field pk">id (PK)</div>
+        <div class="schema-field">email (UQ)</div>
+        <div class="schema-field">role — STUDENT | INSTRUCTOR | SYSTEM</div>
+        <div class="schema-field">account_status — PENDING | ACTIVE | SUSPENDED</div>
+        <div class="schema-field fk">user_group_id → user_groups</div>
+        <div class="schema-field">is_email_verified · phone_no</div>
+      </div>
+    </div>
+
+    <div class="schema-card">
+      <div class="schema-card-header">
+        <div class="dot" style="background:#3b82f6"></div>
+        <h4>sessions / password_resets</h4>
+        <span class="group-tag">auth</span>
+      </div>
+      <div class="schema-fields">
+        <div class="schema-field pk">id (PK)</div>
+        <div class="schema-field fk">user_id → users</div>
+        <div class="schema-field">refresh_token · session_id</div>
+        <div class="schema-field">expires_at · used_at</div>
+        <div class="schema-field">token (UQ)</div>
+      </div>
+    </div>
+
+    <div class="schema-card">
+      <div class="schema-card-header">
+        <div class="dot" style="background:#3b82f6"></div>
+        <h4>user_groups / access_rules</h4>
+        <span class="group-tag">auth</span>
+      </div>
+      <div class="schema-fields">
+        <div class="schema-field pk">id (PK)</div>
+        <div class="schema-field">group_name · type</div>
+        <div class="schema-field">rule_name · description</div>
+        <div class="schema-field fk">user_group_rules (junction)</div>
+      </div>
+    </div>
+
+    <!-- Profiles -->
+    <div class="schema-card">
+      <div class="schema-card-header">
+        <div class="dot" style="background:#06b6d4"></div>
+        <h4>students</h4>
+        <span class="group-tag">profile</span>
+      </div>
+      <div class="schema-fields">
+        <div class="schema-field pk">id (PK)</div>
+        <div class="schema-field fk">user_id → users</div>
+        <div class="schema-field">full_name · username · nic · dob</div>
+        <div class="schema-field fk">avatar_url → storage_files</div>
+        <div class="schema-field fk">cv → storage_files</div>
+      </div>
+    </div>
+
+    <div class="schema-card">
+      <div class="schema-card-header">
+        <div class="dot" style="background:#06b6d4"></div>
+        <h4>instructors</h4>
+        <span class="group-tag">profile</span>
+      </div>
+      <div class="schema-fields">
+        <div class="schema-field pk">id (PK)</div>
+        <div class="schema-field fk">user_id → users</div>
+        <div class="schema-field">bio · linkedin_url · website_url</div>
+        <div class="schema-field">expertise · avg_rating</div>
+        <div class="schema-field fk">experience_level_id</div>
+      </div>
+    </div>
+
+    <div class="schema-card">
+      <div class="schema-card-header">
+        <div class="dot" style="background:#06b6d4"></div>
+        <h4>student_academic_profiles</h4>
+        <span class="group-tag">profile</span>
+      </div>
+      <div class="schema-fields">
+        <div class="schema-field pk">id (PK)</div>
+        <div class="schema-field fk">student_id → students</div>
+        <div class="schema-field">qualification — HIGH_SCHOOL | UG | GRAD</div>
+        <div class="schema-field">school_university · study_field</div>
+        <div class="schema-field">graduation_year</div>
+      </div>
+    </div>
+
+    <!-- Courses -->
+    <div class="schema-card">
+      <div class="schema-card-header">
+        <div class="dot" style="background:#10b981"></div>
+        <h4>courses</h4>
+        <span class="group-tag">courses</span>
+      </div>
+      <div class="schema-fields">
+        <div class="schema-field pk">id (PK)</div>
+        <div class="schema-field">title · slug (UQ) · subtitle</div>
+        <div class="schema-field">difficulty — BEGINNER | INTER | ADV</div>
+        <div class="schema-field">price · published_at · avg_rating</div>
+        <div class="schema-field fk">category_id · language_id · currency_id</div>
+      </div>
+    </div>
+
+    <div class="schema-card">
+      <div class="schema-card-header">
+        <div class="dot" style="background:#10b981"></div>
+        <h4>course_sections / section_contents</h4>
+        <span class="group-tag">courses</span>
+      </div>
+      <div class="schema-fields">
+        <div class="schema-field pk">id (PK)</div>
+        <div class="schema-field fk">course_id → courses</div>
+        <div class="schema-field">title · order_index · duration_sec</div>
+        <div class="schema-field">content_type — VIDEO | ARTICLE | QUIZ | ASSIGNMENT</div>
+        <div class="schema-field">video_provider — S3 | YOUTUBE | VIMEO</div>
+      </div>
+    </div>
+
+    <div class="schema-card">
+      <div class="schema-card-header">
+        <div class="dot" style="background:#10b981"></div>
+        <h4>categories / tags / languages</h4>
+        <span class="group-tag">courses</span>
+      </div>
+      <div class="schema-fields">
+        <div class="schema-field pk">id (PK)</div>
+        <div class="schema-field">name · slug · icon</div>
+        <div class="schema-field">skill_name · label</div>
+        <div class="schema-field">iso_code · flag_emoji · symbol</div>
+        <div class="schema-field">course_tags (junction)</div>
+      </div>
+    </div>
+
+    <!-- Enrollments -->
+    <div class="schema-card">
+      <div class="schema-card-header">
+        <div class="dot" style="background:#f59e0b"></div>
+        <h4>student_course_enrollments</h4>
+        <span class="group-tag">enrollment</span>
+      </div>
+      <div class="schema-fields">
+        <div class="schema-field pk">id (PK)</div>
+        <div class="schema-field fk">student_id · course_id</div>
+        <div class="schema-field">payment_status — FREE | PAID | REFUNDED</div>
+        <div class="schema-field">amount_paid · completed_at</div>
+        <div class="schema-field fk">coupon_id · currency_id</div>
+      </div>
+    </div>
+
+    <!-- Assessments -->
+    <div class="schema-card">
+      <div class="schema-card-header">
+        <div class="dot" style="background:#8b5cf6"></div>
+        <h4>quizzes / quiz_settings</h4>
+        <span class="group-tag">assessment</span>
+      </div>
+      <div class="schema-fields">
+        <div class="schema-field pk">id (PK)</div>
+        <div class="schema-field fk">course_section_id</div>
+        <div class="schema-field">max_attempts · pass_score · max_score</div>
+        <div class="schema-field">shuffle_questions · shuffle_options</div>
+        <div class="schema-field">extra_time_minutes</div>
+      </div>
+    </div>
+
+    <div class="schema-card">
+      <div class="schema-card-header">
+        <div class="dot" style="background:#8b5cf6"></div>
+        <h4>questions / options</h4>
+        <span class="group-tag">assessment</span>
+      </div>
+      <div class="schema-fields">
+        <div class="schema-field pk">id (PK)</div>
+        <div class="schema-field fk">quiz_id</div>
+        <div class="schema-field">question_type — MCQ_SINGLE | MCQ_MULTI | TF | SHORT | ESSAY</div>
+        <div class="schema-field">question_text · points</div>
+        <div class="schema-field">option_text · is_correct · explanation</div>
+      </div>
+    </div>
+
+    <div class="schema-card">
+      <div class="schema-card-header">
+        <div class="dot" style="background:#8b5cf6"></div>
+        <h4>assignments / submissions</h4>
+        <span class="group-tag">assessment</span>
+      </div>
+      <div class="schema-fields">
+        <div class="schema-field pk">id (PK)</div>
+        <div class="schema-field fk">course_section_id · enrollment_id</div>
+        <div class="schema-field">due_date · allow_late · max_points</div>
+        <div class="schema-field">submission_type — FILE | TEXT | URL | ANY</div>
+        <div class="schema-field">score · feedback · reviewed_by</div>
+      </div>
+    </div>
+
+    <!-- Notifications -->
+    <div class="schema-card">
+      <div class="schema-card-header">
+        <div class="dot" style="background:#ef4444"></div>
+        <h4>notifications</h4>
+        <span class="group-tag">notifications</span>
+      </div>
+      <div class="schema-fields">
+        <div class="schema-field pk">id (PK)</div>
+        <div class="schema-field fk">recipient_id · sender_id</div>
+        <div class="schema-field">channel — IN_APP | EMAIL | SMS</div>
+        <div class="schema-field">title · body · read_at</div>
+        <div class="schema-field fk">notification_type_id</div>
+      </div>
+    </div>
+
+    <!-- Certs -->
+    <div class="schema-card">
+      <div class="schema-card-header">
+        <div class="dot" style="background:#10b981"></div>
+        <h4>issued_certificates</h4>
+        <span class="group-tag">certs</span>
+      </div>
+      <div class="schema-fields">
+        <div class="schema-field pk">id (PK)</div>
+        <div class="schema-field">certificate_uid (UQ)</div>
+        <div class="schema-field fk">enrollment_id · template_id</div>
+        <div class="schema-field">certificate_url · issued_at</div>
+        <div class="schema-field">signature_text</div>
+      </div>
+    </div>
+
+    <!-- Storage -->
+    <div class="schema-card">
+      <div class="schema-card-header">
+        <div class="dot" style="background:#f59e0b"></div>
+        <h4>file_storages</h4>
+        <span class="group-tag">storage</span>
+      </div>
+      <div class="schema-fields">
+        <div class="schema-field pk">id (PK)</div>
+        <div class="schema-field">file_url · file_type — PDF | ZIP | VIDEO</div>
+        <div class="schema-field">file_size · service_provider</div>
+        <div class="schema-field">upload_status — UPLOADED | EMBEDDED</div>
+        <div class="schema-field">transcript_url</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===================== CI/CD ===================== -->
+<div class="content" id="cicd">
+
+  <div class="section-title">CI/CD Pipeline — GitHub Actions → VPS (Option 1)</div>
+
+  <div class="cicd-flow">
+    <div class="flow-step">
+      <div class="flow-box">
+        <span class="flow-icon">👨‍💻</span>
+        <div class="flow-title">Developer</div>
+        <div class="flow-sub">git push / PR</div>
+      </div>
+    </div>
+    <div class="flow-arrow"></div>
+    <div class="flow-step">
+      <div class="flow-box">
+        <span class="flow-icon">🐙</span>
+        <div class="flow-title">GitHub</div>
+        <div class="flow-sub">main / dev branch</div>
+      </div>
+    </div>
+    <div class="flow-arrow"></div>
+    <div class="flow-step">
+      <div class="flow-box" style="border-color: rgba(59,130,246,0.4)">
+        <span class="flow-icon">⚙️</span>
+        <div class="flow-title">GH Actions</div>
+        <div class="flow-sub">Lint · Test · Build</div>
+      </div>
+    </div>
+    <div class="flow-arrow"></div>
+    <div class="flow-step">
+      <div class="flow-box" style="border-color: rgba(16,185,129,0.4)">
+        <span class="flow-icon">🐳</span>
+        <div class="flow-title">Docker Build</div>
+        <div class="flow-sub">Image → GHCR</div>
+      </div>
+    </div>
+    <div class="flow-arrow"></div>
+    <div class="flow-step">
+      <div class="flow-box" style="border-color: rgba(245,158,11,0.4)">
+        <span class="flow-icon">🔑</span>
+        <div class="flow-title">SSH Deploy</div>
+        <div class="flow-sub">Pull + docker-compose up</div>
+      </div>
+    </div>
+    <div class="flow-arrow"></div>
+    <div class="flow-step">
+      <div class="flow-box" style="border-color: rgba(16,185,129,0.4)">
+        <span class="flow-icon">🚀</span>
+        <div class="flow-title">Production</div>
+        <div class="flow-sub">VPS Live</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">Pipeline Jobs Detail</div>
+
+  <div class="infra-notes" style="grid-template-columns: repeat(4,1fr)">
+    <div class="infra-note">
+      <h4>PR Checks (all branches)</h4>
+      <p>ESLint + Prettier checks. Unit tests via Jest (NestJS). TypeScript compile check. Prisma schema validation. Block merge on failure.</p>
+    </div>
+    <div class="infra-note">
+      <h4>Build (main/dev)</h4>
+      <p>Docker multi-stage build for NestJS API and Next.js frontend. Push images to GitHub Container Registry (GHCR). Tag with git SHA for rollback.</p>
+    </div>
+    <div class="infra-note">
+      <h4>DB Migrations</h4>
+      <p>Run <code>prisma migrate deploy</code> via SSH before container restart. Zero-downtime with Prisma's migration system. Never run on PRs — only on merge to main.</p>
+    </div>
+    <div class="infra-note">
+      <h4>Rollback Strategy</h4>
+      <p>Keep previous 3 image tags in GHCR. One-command rollback: <code>docker-compose pull [tag] && docker-compose up -d</code>. DB rollback via Prisma migrate resolve.</p>
+    </div>
+  </div>
+
+  <div class="section-title">Environment Strategy</div>
+
+  <div style="margin: 0 3rem 2rem; display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem;">
+    <div class="verdict-card">
+      <h3 style="color: var(--accent2)">🧪 Development</h3>
+      <p>Local docker-compose with hot reload. Seeded test data. All services on localhost. .env.local for secrets. No CI required.</p>
+    </div>
+    <div class="verdict-card">
+      <h3 style="color: var(--amber)">🔬 Staging</h3>
+      <p>Auto-deploy from dev branch. Full stack on separate subdomain. Production-like config. Used for QA and demo. Deployed after PR merge to dev.</p>
+    </div>
+    <div class="verdict-card winner">
+      <h3>🚀 Production</h3>
+      <p>Deploy on merge to main only. Requires passing all CI checks. GitHub Secrets for env vars. Nginx + TLS. Zero-downtime container swap.</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function showTab(id) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    event.target.classList.add('active');
+  }
+</script>
+
+</body>
+</html>
